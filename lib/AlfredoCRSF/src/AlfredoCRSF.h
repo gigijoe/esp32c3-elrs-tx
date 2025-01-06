@@ -34,9 +34,6 @@ public:
     uint32_t getUpdateInterval() const { return _updateInterval; }
     uint32_t getCorrection() const { return _correction; }
 
-    // TX Packet
-    void BroadcastPing();
-
     // Device
     uint8_t device_address() { return _device_address; }
     

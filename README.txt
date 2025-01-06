@@ -34,3 +34,8 @@ https://gist.github.com/GOROman/6401fbdafcd6048edb9c32b190d708b9
 
 https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md
 
+#
+# Half duplex uart
+#
+
+https://github.com/ExpressLRS/ExpressLRS/blob/master/src/lib/Handset/CRSFHandset.cpp

@@ -21,8 +21,8 @@
 #define PIN_TX_OUT 21
 #define GPIO_PIN_RCSIGNAL_UART_INV false
 
-HardwareSerial crsfSerialOut(1);
-AlfredoCRSF crsfOut;
+HardwareSerial crsfBus(1);
+AlfredoCRSF crsfInst;
 
 // Fallback method to send default channel values
 void sendFallbackChannels(uint8_t addr) {
@@ -44,7 +44,7 @@ void sendFallbackChannels(uint8_t addr) {
   crsfChannels.ch14 = CRSF_CHANNEL_VALUE_1000;
   crsfChannels.ch15 = CRSF_CHANNEL_VALUE_1000;
 
-  crsfOut.writePacket(addr, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, &crsfChannels, sizeof(crsfChannels));
+  crsfInst.writePacket(addr, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, &crsfChannels, sizeof(crsfChannels));
 }
 
 void sendChannels(uint8_t addr, int chs[CRSF_NUM_CHANNELS]) {
@@ -67,7 +67,7 @@ void sendChannels(uint8_t addr, int chs[CRSF_NUM_CHANNELS]) {
   crsfChannels.ch14 = map(chs[14], 1000, 2000, CRSF_CHANNEL_VALUE_1000, CRSF_CHANNEL_VALUE_2000);
   crsfChannels.ch15 = map(chs[15], 1000, 2000, CRSF_CHANNEL_VALUE_1000, CRSF_CHANNEL_VALUE_2000);
 
-  crsfOut.writePacket(addr, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, &crsfChannels, sizeof(crsfChannels));
+  crsfInst.writePacket(addr, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, &crsfChannels, sizeof(crsfChannels));
 }
 
 // CRC8 implementation with polynom = 0xBA
@@ -115,6 +115,30 @@ uint8_t crc8_BA(const uint8_t * ptr, uint32_t len)
   return crc;
 }
 
+void writeReadParam(uint8_t addr, uint8_t fieldId, uint8_t fieldChunk)
+{
+  uint8_t packetCmd[5];
+  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_READ; // 0x2C
+  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
+  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
+  packetCmd[3] = fieldId;
+  packetCmd[4] = fieldChunk;
+  
+  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_READ, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+}
+
+void writeWriteParam(uint8_t addr, uint8_t fieldId, uint8_t param)
+{
+  uint8_t packetCmd[5];
+  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_WRITE; // 0x2D
+  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
+  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
+  packetCmd[3] = fieldId;
+  packetCmd[4] = param;
+  
+  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+}
+
 #define CRSF_COMMAND_SUBCMD_RX         0x10 
 #define COMMAND_SUBCMD_RX_BIND         0x01
 #define COMMAND_MODEL_SELECT_ID        0x05
@@ -131,7 +155,7 @@ void writeModelId(uint8_t addr, uint8_t modelId)
   packetCmd[5] = modelId;
   packetCmd[6] = crc8_BA((const uint8_t *)&packetCmd[0], 6);
   
-  crsfOut.writeExtPacket(addr, CRSF_FRAMETYPE_COMMAND, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 4);
+  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_COMMAND, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 4);
 }
 
 // ELRS command
@@ -157,7 +181,17 @@ void writeElrsCommand(uint8_t addr, uint8_t cmd, uint8_t value)
   packetCmd[3] = cmd;
   packetCmd[4] = value;
   
-  crsfOut.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+}
+
+void writeElrsStatusRequest(uint8_t addr)
+{
+  writeElrsCommand(addr, 0, 0);
+}
+
+void writeBroadcastPing(uint8_t addr)
+{
+  crsfInst.writeExtPacket(CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
 }
 
 #define CRSF_TIME_BETWEEN_FRAMES_US     4000 // 4 ms 250Hz
@@ -166,16 +200,16 @@ void writeElrsCommand(uint8_t addr, uint8_t cmd, uint8_t value)
 
 typedef enum
 {
-    PWR_10mW = 0,
-    PWR_25mW = 1,
-    PWR_50mW = 2,
-    PWR_100mW = 3,
-    PWR_250mW = 4,
-    PWR_500mW = 5,
-    PWR_1000mW = 6,
-    PWR_2000mW = 7,
-    PWR_COUNT = 8,
-    PWR_MATCH_TX = PWR_COUNT,
+  PWR_10mW = 0,
+  PWR_25mW = 1,
+  PWR_50mW = 2,
+  PWR_100mW = 3,
+  PWR_250mW = 4,
+  PWR_500mW = 5,
+  PWR_1000mW = 6,
+  PWR_2000mW = 7,
+  PWR_COUNT = 8,
+  PWR_MATCH_TX = PWR_COUNT,
 } PowerLevels_e;
 
 /*
@@ -210,6 +244,10 @@ typedef enum
   PKR_F1000 = 9
 } PacketRates_e;
 
+uint32_t TxInterval[] = { 20000, 10000, 6666, 4000, 3003, 2000, 1000, 1000, 2000, 1000 };
+
+PowerLevels_e s_powerLevel = PWR_500mW;
+PacketRates_e s_packetRate = PKR_250Hz;
 
 /*
  *
@@ -284,8 +322,8 @@ void setup() {
   timerAlarmWrite(timer1, 1000000L, true);            // 1000000 * 1us = 1000ms, single shot
   timerAlarmEnable(timer1); // start
 
-  crsfSerialOut.begin(CRSF_BAUDRATE, SERIAL_8N1, PIN_RX_OUT, PIN_TX_OUT, false, 500); // None invert, 500ms timeout  
-  crsfOut.begin(crsfSerialOut);
+  crsfBus.begin(CRSF_BAUDRATE, SERIAL_8N1, PIN_RX_OUT, PIN_TX_OUT, false, 500); // None invert, 500ms timeout  
+  crsfInst.begin(crsfBus);
 }
 
 int channels[CRSF_NUM_CHANNELS] = { 0 };
@@ -294,12 +332,14 @@ int channels[CRSF_NUM_CHANNELS] = { 0 };
 void loop() {
   duplex_set_RX();
 
-  crsfOut.update();
-#if 1
+  crsfInst.update();
+
   uint32_t timeNow = micros();
   static unsigned long lastUpdate = 0;
   static uint32_t loopCount = 0;
-  if(timeNow - lastUpdate >= CRSF_TIME_BETWEEN_FRAMES_US) {
+  static uint32_t txInterval = TxInterval[s_packetRate];
+  
+  if(timeNow - lastUpdate >= txInterval) {
     if(digitalRead(BOOT_BUILTIN) == LOW) {
       for(int i=0;i<CRSF_NUM_CHANNELS;++i) {
         channels[i] = 2000;
@@ -312,32 +352,30 @@ void loop() {
 	sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 	loopCount++;
       } else if(loopCount > 1000 && loopCount <= 1005) {
-        if(crsfOut.device_address() == 0) {
+        if(crsfInst.device_address() == 0) {
           duplex_set_TX();
-          crsfOut.BroadcastPing();
+          writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
         }
         loopCount++;
       } else if(loopCount > 1005 && loopCount <= 1010) {
         duplex_set_TX();
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, PKR_250Hz);
+        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
         loopCount++;
       } else if(loopCount > 1010 && loopCount <= 1015) {
         duplex_set_TX();
         //writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, 3); // 0xC8
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, PWR_500mW);
+        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
 	loopCount++;
       } else {
         duplex_set_TX();
-        if(crsfOut.device_address() == 0) {
+        if(crsfInst.device_address() == 0) {
           //delayMicroseconds(CRSF_TIME_BETWEEN_FRAMES_US);
-          crsfOut.BroadcastPing();
+          writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
         } else
           sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
       }
     }
     lastUpdate = timeNow;
   }
-  //crsfSerialOut.flush();
-#endif
 }
 

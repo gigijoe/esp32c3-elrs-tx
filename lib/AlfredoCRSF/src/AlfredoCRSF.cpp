@@ -269,11 +269,6 @@ void AlfredoCRSF::packetDeviceInfo(const crsf_ext_header_t *p)
     Serial.printf("Parameter Version %d\r\n", _deviceInfo.parameterVersion);
 }
 
-void AlfredoCRSF::BroadcastPing()
-{
-    writeExtPacket(CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
-}
-
 void AlfredoCRSF::write(uint8_t b)
 {
     _port->write(b);
