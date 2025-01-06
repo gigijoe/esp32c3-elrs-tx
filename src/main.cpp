@@ -125,6 +125,8 @@ void writeReadParam(uint8_t addr, uint8_t fieldId, uint8_t fieldChunk)
   packetCmd[4] = fieldChunk;
   
   crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_READ, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+  
+  crsfInst.waitForRxPacket(1000);
 }
 
 void writeWriteParam(uint8_t addr, uint8_t fieldId, uint8_t param)
@@ -159,7 +161,7 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 }
 
 // ELRS command
-#define ELRS_ADDRESS                    0xEE
+//#define ELRS_ADDRESS                    0xEE
 #define ELRS_BIND_COMMAND               0xFF
 #define ELRS_WIFI_COMMAND               0xFE
 #define ELRS_PKT_RATE_COMMAND           0x01
@@ -169,8 +171,8 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 #define ELRS_POWER_COMMAND              0x06
 #define ELRS_BLE_JOYSTIC_COMMAND        17
 //#define TYPE_PING_DEVICES               0x28
-#define TYPE_SETTINGS_WRITE             0x2D
-#define ADDR_RADIO                      0xEA //  Radio Transmitter
+//#define TYPE_SETTINGS_WRITE             0x2D
+//#define ADDR_RADIO                      0xEA //  Radio Transmitter
 
 void writeElrsCommand(uint8_t addr, uint8_t cmd, uint8_t value) 
 {
@@ -187,11 +189,15 @@ void writeElrsCommand(uint8_t addr, uint8_t cmd, uint8_t value)
 void writeElrsStatusRequest(uint8_t addr)
 {
   writeElrsCommand(addr, 0, 0);
+  
+  crsfInst.waitForRxPacket(1000);
 }
 
 void writeBroadcastPing(uint8_t addr)
 {
   crsfInst.writeExtPacket(CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
+  
+  crsfInst.waitForRxPacket(1000);
 }
 
 #define CRSF_TIME_BETWEEN_FRAMES_US     4000 // 4 ms 250Hz
@@ -248,6 +254,7 @@ uint32_t TxInterval[] = { 20000, 10000, 6666, 4000, 3003, 2000, 1000, 1000, 2000
 
 PowerLevels_e s_powerLevel = PWR_500mW;
 PacketRates_e s_packetRate = PKR_250Hz;
+uint8_t s_modelId = 3;
 
 /*
  *
@@ -346,13 +353,54 @@ void loop() {
       }
       duplex_set_TX();
       sendChannels(CRSF_ADDRESS_CRSF_TRANSMITTER, channels);
+#if 0      
+      uint8_t fieldCount = crsfInst.getDeviceFieldCount();
+      if(fieldCount > 0) {
+        for(int i=0;i<fieldCount;++i) {
+          uint8_t chunk_number = 0;
+        }
+      }
+#endif      
     } else {
+#if 0
+      if(loopCount == 0) {
+        if(crsfInst.getUpdateInterval() == 0) {
+          duplex_set_TX();
+	  sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
+        } else {
+          if(crsfInst.getDeviceAddress() == 0) {
+            duplex_set_TX();
+            writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
+          } else
+            loopCount++;
+        }
+      } else if(loopCount > 0 && loopCount <= 5) {
+        duplex_set_TX();
+        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
+        loopCount++;
+      } else if(loopCount > 5 && loopCount <= 10) {
+        duplex_set_TX();
+        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
+	loopCount++;
+      } else if(loopCount > 10 && loopCount <= 15) {
+        duplex_set_TX();
+        writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, 0); // 0xC8
+	loopCount++;
+      } else {
+        duplex_set_TX();
+        if(crsfInst.getDeviceAddress() == 0) {
+          //delayMicroseconds(txInterval);
+          writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
+        } else
+          sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
+      }
+#else    
       if(loopCount <= 1000) { // repeat 1000 packets to build connection to TX module
 	duplex_set_TX();
 	sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 	loopCount++;
       } else if(loopCount > 1000 && loopCount <= 1005) {
-        if(crsfInst.device_address() == 0) {
+        if(crsfInst.getDeviceAddress() == 0) {
           duplex_set_TX();
           writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
         }
@@ -363,17 +411,21 @@ void loop() {
         loopCount++;
       } else if(loopCount > 1010 && loopCount <= 1015) {
         duplex_set_TX();
-        //writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, 3); // 0xC8
         writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
+	loopCount++;
+      } else if(loopCount > 1015 && loopCount <= 1020) {
+        duplex_set_TX();
+        writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, s_modelId);
 	loopCount++;
       } else {
         duplex_set_TX();
-        if(crsfInst.device_address() == 0) {
-          //delayMicroseconds(CRSF_TIME_BETWEEN_FRAMES_US);
+        if(crsfInst.getDeviceAddress() == 0) {
+          //delayMicroseconds(txInterval);
           writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
         } else
           sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
       }
+#endif      
     }
     lastUpdate = timeNow;
   }

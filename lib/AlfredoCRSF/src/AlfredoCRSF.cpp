@@ -324,4 +324,17 @@ void AlfredoCRSF::writeExtPacket(uint8_t addr, uint8_t type, uint8_t dest_addr, 
     write(buf, len + 6);
 }
 
+bool AlfredoCRSF::waitForRxPacket(uint32_t timeout)
+{
+  uint32_t timeNow = millis();
+  while(1) {
+    if(_port->available())
+      return true;
+    if(millis() - timeNow >= timeout)
+      break;
+    yield();
+  }
+
+  return false;
+}
 

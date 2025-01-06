@@ -21,6 +21,7 @@ public:
     void queuePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len);
     void writePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len);
     void writeExtPacket(uint8_t addr, uint8_t type, uint8_t dest_addr, uint8_t orig_addr, const void *payload, uint8_t len);
+    bool waitForRxPacket(uint32_t timeout); // ms timeout
 
     // Return current channel value (1-based) in us
     int getChannel(unsigned int ch) const { return _channels[ch - 1]; }
@@ -35,7 +36,9 @@ public:
     uint32_t getCorrection() const { return _correction; }
 
     // Device
-    uint8_t device_address() { return _device_address; }
+    uint8_t getDeviceAddress() { return _device_address; }
+    const char *getDeviceName() { return _device_name; }
+    uint8_t getDeviceFieldCount() { return _deviceInfo.fieldCnt; };
     
 private:
     Stream* _port;
