@@ -321,6 +321,7 @@ void setup() {
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(BOOT_BUILTIN, INPUT_PULLUP);      //input pull-up resistor is enabled
+  pinMode(A4, INPUT_PULLUP);      //input pull-up resistor is enabled
 
   Serial.begin(115200);
 
@@ -347,7 +348,7 @@ void loop() {
   static uint32_t txInterval = TxInterval[s_packetRate];
   
   if(timeNow - lastUpdate >= txInterval) {
-    if(digitalRead(BOOT_BUILTIN) == LOW) {
+    if(digitalRead(BOOT_BUILTIN) == LOW || digitalRead(A4) == LOW) {
       for(int i=0;i<CRSF_NUM_CHANNELS;++i) {
         channels[i] = 2000;
       }
@@ -362,49 +363,17 @@ void loop() {
       }
 #endif      
     } else {
-#if 0
-      if(loopCount == 0) {
-        if(crsfInst.getUpdateInterval() == 0) {
-          duplex_set_TX();
-	  sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
-        } else {
-          if(crsfInst.getDeviceAddress() == 0) {
-            duplex_set_TX();
-            writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
-          } else
-            loopCount++;
-        }
-      } else if(loopCount > 0 && loopCount <= 5) {
-        duplex_set_TX();
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
-        loopCount++;
-      } else if(loopCount > 5 && loopCount <= 10) {
-        duplex_set_TX();
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
-	loopCount++;
-      } else if(loopCount > 10 && loopCount <= 15) {
-        duplex_set_TX();
-        writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, 0); // 0xC8
-	loopCount++;
-      } else {
-        duplex_set_TX();
-        if(crsfInst.getDeviceAddress() == 0) {
-          //delayMicroseconds(txInterval);
-          writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
-        } else
-          sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
-      }
-#else    
       if(loopCount <= 1000) { // repeat 1000 packets to build connection to TX module
 	duplex_set_TX();
 	sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 	loopCount++;
       } else if(loopCount > 1000 && loopCount <= 1005) {
-        if(crsfInst.getDeviceAddress() == 0) {
+        if(crsfInst.getDeviceAddress() == 0) { // Wait for device response
           duplex_set_TX();
           writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
-        }
-        loopCount++;
+          loopCount--;
+        } else
+          loopCount++;
       } else if(loopCount > 1005 && loopCount <= 1010) {
         duplex_set_TX();
         writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
@@ -419,13 +388,8 @@ void loop() {
 	loopCount++;
       } else {
         duplex_set_TX();
-        if(crsfInst.getDeviceAddress() == 0) {
-          //delayMicroseconds(txInterval);
-          writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
-        } else
-          sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
-      }
-#endif      
+        sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
+      }      
     }
     lastUpdate = timeNow;
   }

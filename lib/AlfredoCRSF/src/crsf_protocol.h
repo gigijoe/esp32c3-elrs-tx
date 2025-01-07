@@ -217,4 +217,13 @@ static inline uint32_t be32toh(uint32_t val)
     return __builtin_bswap32(val);
 #endif
 }
+
+static inline int32_t be32toh(int32_t val)
+{
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    return val;
+#else
+    return __builtin_bswap32(val);
+#endif
+}
 #endif

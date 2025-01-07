@@ -33,7 +33,7 @@ public:
     const crsf_sensor_attitude_t *getAttitudeSensor() const { return &_attitudeSensor; }
     bool isLinkUp() const { return _linkIsUp; }
     uint32_t getUpdateInterval() const { return _updateInterval; }
-    uint32_t getCorrection() const { return _correction; }
+    int32_t getCorrection() const { return _correction; }
 
     // Device
     uint8_t getDeviceAddress() { return _device_address; }
@@ -46,6 +46,7 @@ private:
     uint8_t _rxBufPos;
     Crc8 _crc;
     crsf_channels_t _channelsPacked;
+    crsf_sensor_battery_t _batterySensor;
     crsfLinkStatistics_t _linkStatistics;
     crsf_sensor_gps_t _gpsSensor;
     crsf_sensor_vario_t _varioSensor;
@@ -57,7 +58,7 @@ private:
     bool _linkIsUp;
     int _channels[CRSF_NUM_CHANNELS];
     uint32_t _updateInterval;
-    uint32_t _correction;
+    int32_t _correction;
     uint8_t _device_address;
     char _device_name[CRSF_MAX_NAME_LEN];
     deviceInformationPacket_t _deviceInfo;
@@ -71,6 +72,7 @@ private:
 
     // Packet RX Handlers
     void packetChannelsPacked(const crsf_header_t *p);
+    void packetBatterySensor(const crsf_header_t *p);
     void packetLinkStatistics(const crsf_header_t *p);
     void packetGps(const crsf_header_t *p);
     void packetVario(const crsf_header_t *p);

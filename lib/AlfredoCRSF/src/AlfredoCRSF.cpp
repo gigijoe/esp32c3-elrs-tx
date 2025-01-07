@@ -97,18 +97,15 @@ void AlfredoCRSF::processPacketIn(uint8_t len)
     const crsf_header_t *hdr = (crsf_header_t *)_rxBuf;
     const crsf_ext_header_t *extHdr = (crsf_ext_header_t *)_rxBuf;
 
-    Serial.printf("Device Address 0x%02x, Frame Type 0x%02x\r\n", hdr->device_addr, hdr->type);
-    for(int i=0;i<hdr->frame_size;i++) {
-        Serial.printf("0x%02x ", _rxBuf[i+2]);
-    }
-    Serial.printf("\r\n");
-    
     //if (hdr->device_addr == CRSF_ADDRESS_FLIGHT_CONTROLLER)
     {
         switch (hdr->type)
         {
         case CRSF_FRAMETYPE_GPS: // 0x02
             packetGps(hdr);
+            break;
+        case CRSF_FRAMETYPE_BATTERY_SENSOR:
+            packetBatterySensor(hdr);
             break;
         case CRSF_FRAMETYPE_RC_CHANNELS_PACKED: // 0x16
             packetChannelsPacked(hdr);
@@ -130,6 +127,11 @@ void AlfredoCRSF::processPacketIn(uint8_t len)
             packetRadioId(extHdr);
             break;
         default:
+            Serial.printf("Device Address 0x%02x, Frame Type 0x%02x\r\n", hdr->device_addr, hdr->type);
+            for(int i=0;i<hdr->frame_size;i++) {
+                Serial.printf("0x%02x ", _rxBuf[i+2]);
+            }
+            Serial.printf("\r\n");
             break;
         }
     }
@@ -183,10 +185,54 @@ void AlfredoCRSF::packetChannelsPacked(const crsf_header_t *p)
     memcpy(&_channelsPacked, ch, sizeof(_channelsPacked));
 }
 
+void AlfredoCRSF::packetBatterySensor(const crsf_header_t *p)
+{
+  const crsf_sensor_battery_t *bat = (crsf_sensor_battery_t *)p->data;
+  memcpy(&_batterySensor, bat, sizeof(_batterySensor));
+  
+  Serial.printf("[ Battery Sensor ]\r\n");
+  Serial.printf("\tVoltage : %.1f V\r\n", be16toh(bat->voltage) / 10.0f);
+  Serial.printf("\tCurrent : %.1f A\r\n", be16toh(bat->current) / 10.0f);
+  uint32_t c = bat->capacity;
+  Serial.printf("\tcapacity : %u mAh\r\n", be32toh(c));
+  Serial.printf("\tremaining : %u %\r\n", bat->remaining);
+}
+
+/*
+ * 0x14 Link statistics
+ * Payload:
+ *
+ * uint8_t Uplink RSSI Ant. 1 ( dBm * -1 )
+ * uint8_t Uplink RSSI Ant. 2 ( dBm * -1 )
+ * uint8_t Uplink Package success rate / Link quality ( % )
+ * int8_t Uplink SNR ( db )
+ * uint8_t Diversity active antenna ( enum ant. 1 = 0, ant. 2 )
+ * uint8_t RF Mode ( enum 4fps = 0 , 50fps, 150hz)
+ * uint8_t Uplink TX Power ( enum 0mW = 0, 10mW, 25 mW, 100 mW, 500 mW, 1000 mW, 2000mW )
+ * uint8_t Downlink RSSI ( dBm * -1 )
+ * uint8_t Downlink package success rate / Link quality ( % )
+ * int8_t Downlink SNR ( db )
+ * Uplink is the connection from the ground to the UAV and downlink the opposite direction.
+ */
+
 void AlfredoCRSF::packetLinkStatistics(const crsf_header_t *p)
 {
     const crsfLinkStatistics_t *link = (crsfLinkStatistics_t *)p->data;
     memcpy(&_linkStatistics, link, sizeof(_linkStatistics));
+    
+    Serial.printf("[ Link Statistics ]\r\n");
+    Serial.printf("\tUp Link ->\r\n");
+    Serial.printf("\tRSSI 1 : %u\r\n", link->uplink_RSSI_1);
+    Serial.printf("\tRSSI 2 : %u\r\n", link->uplink_RSSI_2);
+    Serial.printf("\tLink Quality : %u\r\n", link->uplink_Link_quality);
+    Serial.printf("\tSNR : %d\r\n", link->uplink_SNR);
+    Serial.printf("\tActive Antenna : %u\r\n", link->active_antenna);
+    Serial.printf("\tRF Mode : %u\r\n", link->rf_Mode);
+    Serial.printf("\tTX Power : %u\r\n", link->uplink_TX_Power);
+    Serial.printf("\tDown Link ->\r\n");
+    Serial.printf("\tRSSI : %u\r\n", link->downlink_RSSI);
+    Serial.printf("\tLink Quality : %u\r\n", link->downlink_Link_quality);
+    Serial.printf("\tSNR : %d\r\n", link->downlink_SNR);
 }
 
 void AlfredoCRSF::packetGps(const crsf_header_t *p)
@@ -227,7 +273,7 @@ void AlfredoCRSF::packetRadioId(const crsf_ext_header_t *p)
     if(p->dest_addr == CRSF_ADDRESS_RADIO_TRANSMITTER && // 0xEA - radio address
         	data[0] == CRSF_FRAMETYPE_OPENTX_SYNC) { // 0x10 - timing correction frame
     	uint32_t updateInterval = be32toh(*(uint32_t *)&data[1]);
-    	uint32_t correction = be32toh(*(uint32_t *)&data[5]);
+    	int32_t correction = be32toh(*(int32_t *)&data[5]);
     	// values are in 10th of micro-seconds
         updateInterval /= 10;
         correction /= 10;
@@ -237,9 +283,9 @@ void AlfredoCRSF::packetRadioId(const crsf_ext_header_t *p)
             correction = -((-correction) % updateInterval);
 
     	_updateInterval = updateInterval;
-    	_correction = correction;
+    	_correction = correction; // LSB = 100ns, positive values = data came too early,
     
-        Serial.printf("Update Interval = %u, Correction = %u\r\n", updateInterval, correction);
+        //Serial.printf("Update Interval = %u, Correction = %d\r\n", updateInterval, correction);
     }
 }
 
@@ -260,13 +306,14 @@ void AlfredoCRSF::packetDeviceInfo(const crsf_ext_header_t *p)
     _deviceInfo.parameterVersion = deviceInfo->parameterVersion;
     
     Serial.printf("[ Device Onformation ]\r\n");
-    Serial.printf("Device Address 0x%02x\r\n", _device_address);
-    Serial.printf("Device Name %s\r\n", _device_name);
-    Serial.printf("Serial No 0x%08x\r\n", _deviceInfo.serialNo);
-    Serial.printf("Hardware Version 0x%08x\r\n", _deviceInfo.hardwareVer);
-    Serial.printf("Foftware Version 0x%08x\r\n", _deviceInfo.softwareVer);
-    Serial.printf("Field Count %d\r\n", _deviceInfo.fieldCnt);
-    Serial.printf("Parameter Version %d\r\n", _deviceInfo.parameterVersion);
+    Serial.printf("\tDevice Address 0x%02x\r\n", _device_address);
+    Serial.printf("\tDevice Name %s\r\n", _device_name);
+    Serial.printf("\tSerial No 0x%08x\r\n", _deviceInfo.serialNo);
+    Serial.printf("\tSerial No %c%c%c%c\r\n", _deviceInfo.serialNo >> 24, (_deviceInfo.serialNo >> 16) & 0xff, (_deviceInfo.serialNo >> 8) & 0xff, _deviceInfo.serialNo & 0xff);
+    Serial.printf("\tHardware Version 0x%08x\r\n", _deviceInfo.hardwareVer);
+    Serial.printf("\tFoftware Version 0x%08x\r\n", _deviceInfo.softwareVer);
+    Serial.printf("\tField Count %d\r\n", _deviceInfo.fieldCnt);
+    Serial.printf("\tParameter Version %d\r\n", _deviceInfo.parameterVersion);
 }
 
 void AlfredoCRSF::write(uint8_t b)
