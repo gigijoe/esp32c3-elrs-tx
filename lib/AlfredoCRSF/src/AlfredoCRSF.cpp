@@ -2,12 +2,12 @@
 
 AlfredoCRSF::AlfredoCRSF() :
     _crc(0xd5),
-    _lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown")
+    _lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown"), _currentFieldChunk(0), _chunkRemaining(0), _paramDataSize(0)
 {
      
 }
 
-void AlfredoCRSF::begin(Stream &port)
+void AlfredoCRSF::begin(Stream & port)
 {
   this->_port = &port;
 }
@@ -35,7 +35,7 @@ void AlfredoCRSF::handleSerialIn()
         }
     }
 
-    checkPacketTimeout();
+    //checkPacketTimeout();
     checkLinkDown();
 }
 
@@ -122,6 +122,14 @@ void AlfredoCRSF::processPacketIn(uint8_t len)
 // Used by extended header frames (type in range 0x28 to 0x96)    
         case CRSF_FRAMETYPE_DEVICE_INFO: // 0x29
             packetDeviceInfo(extHdr); 
+            break;
+        case CRSF_FRAMETYPE_PARAMETER_SETTINGS_ENTRY:
+            Serial.printf("Device Address 0x%02x, Frame Type 0x%02x\r\n", hdr->device_addr, hdr->type);
+            for(int i=0;i<hdr->frame_size;i++) {
+                Serial.printf("0x%02x ", _rxBuf[i+2]);
+            }
+            Serial.printf("\r\n");
+            packetParameterSettingsEntry(extHdr);
             break;
         case CRSF_FRAMETYPE_RADIO_ID: // 0x3A
             packetRadioId(extHdr);
@@ -267,28 +275,6 @@ void AlfredoCRSF::packetAttitude(const crsf_header_t *p)
     _attitudeSensor.yaw = be16toh(attitude->yaw);
 }
 
-void AlfredoCRSF::packetRadioId(const crsf_ext_header_t *p)
-{
-    const uint8_t *data = (const uint8_t *)p->data;
-    if(p->dest_addr == CRSF_ADDRESS_RADIO_TRANSMITTER && // 0xEA - radio address
-        	data[0] == CRSF_FRAMETYPE_OPENTX_SYNC) { // 0x10 - timing correction frame
-    	uint32_t updateInterval = be32toh(*(uint32_t *)&data[1]);
-    	int32_t correction = be32toh(*(int32_t *)&data[5]);
-    	// values are in 10th of micro-seconds
-        updateInterval /= 10;
-        correction /= 10;
-        if (correction >= 0)
-            correction %= updateInterval;
-        else
-            correction = -((-correction) % updateInterval);
-
-    	_updateInterval = updateInterval;
-    	_correction = correction; // LSB = 100ns, positive values = data came too early,
-    
-        //Serial.printf("Update Interval = %u, Correction = %d\r\n", updateInterval, correction);
-    }
-}
-
 void AlfredoCRSF::packetDeviceInfo(const crsf_ext_header_t *p)
 {
     const uint8_t *data = (const uint8_t *)p->data;
@@ -316,16 +302,130 @@ void AlfredoCRSF::packetDeviceInfo(const crsf_ext_header_t *p)
     Serial.printf("\tParameter Version %d\r\n", _deviceInfo.parameterVersion);
 }
 
-void AlfredoCRSF::write(uint8_t b)
+void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
 {
-    _port->write(b);
-    _port->flush();
+  const uint8_t *data = (const uint8_t *)p->data;
+  uint8_t number = data[0];
+  uint8_t chunkRemaining = data[1];  
+  uint8_t dataSize = p->frame_size - 6; // type, dest_addr, orig_addr, number, chunk_remaining, crc
+  
+  if(_isParamReading == false)
+    return;
+  
+  if(_chunkRemaining == 0xff) {
+    _chunkRemaining = 0;
+    _currentFieldChunk = 0;
+    _isParamReading = false;
+    return;
+  }
+  
+  if(_chunkRemaining != 0 && 
+      chunkRemaining >= _chunkRemaining) {
+    return; // Repeat entry
+  } else
+    _chunkRemaining = chunkRemaining;
+  
+  memcpy(&_paramData[_paramDataSize], &data[2], dataSize);
+  _paramDataSize += dataSize;
+
+  if(_chunkRemaining > 0) {
+    //writeParameterRead(p->device_addr, number, _currentFieldChunk + 1);
+    _currentFieldChunk++;
+    //delayMicroseconds(1000);
+  } else {
+    uint8_t parentFolder = _paramData[0];
+    uint8_t dataType = _paramData[1];
+    int n = 0;
+    char name[CRSF_MAX_NAME_LEN];
+    if(_paramData[2] == 'H' &&
+        _paramData[3] == 'o' &&
+        _paramData[4] == 'o' &&
+        _paramData[5] == 'J') {
+      memcpy(name, &_paramData[2], 4);
+      name[4] = '\0';
+      n = 6;
+    } else {
+      strlcpy(name, (const char *)&_paramData[2], CRSF_MAX_NAME_LEN);
+      n = strlen((const char *)name) + 1 + 2; // folder + type + name + '\0' 
+    }
+
+    Serial.printf("[ Parameter Read %u ]\r\n", number);
+    Serial.printf("\tParent Folder : %u\r\n", parentFolder);
+    Serial.printf("\tDtat Type : %u\r\n", dataType);
+    Serial.printf("\tName : %s\r\n", name);
+
+    switch(dataType) {
+      case CRSF_TEXT_SELECTION: {
+        char options[256];
+        strlcpy(options, (const char *)&_paramData[n], 256);
+        n += strlen((const char *)options) + 1; // options + '\0'
+        Serial.printf("\tOptions : %s\r\n", options);
+        Serial.printf("\tValue : %u\r\n", _paramData[n++]);
+        Serial.printf("\tMin : %u\r\n", _paramData[n++]);
+        Serial.printf("\tMax : %u\r\n", _paramData[n++]);
+        Serial.printf("\tDefault : %u\r\n", _paramData[n++]);
+        char unit[CRSF_MAX_NAME_LEN];
+        strlcpy(unit, (const char *)&_paramData[n], CRSF_MAX_NAME_LEN);
+        Serial.printf("\tUnit : %s\r\n", unit);
+        } break;
+      case CRSF_COMMAND:
+        break;
+      case CRSF_INT8: // fallthrough
+      case CRSF_UINT8:
+        break;
+      case CRSF_INT16: // fallthrough
+      case CRSF_UINT16:
+        break;
+      case CRSF_STRING: // fallthough
+      case CRSF_INFO:
+        break;
+      case CRSF_FOLDER:
+        for(int i=n;i<dataSize;++i) {
+          if(_paramData[i] == 0xff)
+            break;
+          Serial.printf("0x%02x ", _paramData[i]);
+        }
+        Serial.printf("\r\n");
+        break;
+      case CRSF_FLOAT:
+      case CRSF_OUT_OF_RANGE:
+      default:
+       break;
+    }
+    
+    _currentFieldChunk = 0;
+    _isParamReading = false;
+  }
+}
+
+void AlfredoCRSF::packetRadioId(const crsf_ext_header_t *p)
+{
+    const uint8_t *data = (const uint8_t *)p->data;
+    if(p->dest_addr == CRSF_ADDRESS_RADIO_TRANSMITTER && // 0xEA - radio address
+        	data[0] == CRSF_FRAMETYPE_OPENTX_SYNC) { // 0x10 - timing correction frame
+    	uint32_t updateInterval = be32toh(*(uint32_t *)&data[1]);
+    	int32_t correction = be32toh(*(int32_t *)&data[5]);
+    	// values are in 10th of micro-seconds
+        updateInterval /= 10;
+        correction /= 10;
+        if (correction >= 0)
+            correction %= updateInterval;
+        else
+            correction = -((-correction) % updateInterval);
+
+    	_updateInterval = updateInterval;
+    	_correction = correction; // LSB = 100ns, positive values = data came too early,
+    
+        //Serial.printf("Update Interval = %u, Correction = %d\r\n", updateInterval, correction);
+    }
 }
 
 void AlfredoCRSF::write(const uint8_t *buf, size_t len)
 {
+    duplex_set_TX();
     _port->write(buf, len);
     _port->flush();
+    duplex_set_RX();
 }
 
 void AlfredoCRSF::queuePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len)
@@ -371,17 +471,39 @@ void AlfredoCRSF::writeExtPacket(uint8_t addr, uint8_t type, uint8_t dest_addr, 
     write(buf, len + 6);
 }
 
-bool AlfredoCRSF::waitForRxPacket(uint32_t timeout)
+bool AlfredoCRSF::waitForRxPacket(uint32_t timeout_ms)
 {
   uint32_t timeNow = millis();
   while(1) {
     if(_port->available())
       return true;
-    if(millis() - timeNow >= timeout)
+    if(millis() - timeNow >= timeout_ms)
       break;
     yield();
   }
 
   return false;
+}
+
+void AlfredoCRSF::writeParameterRead(uint8_t addr, uint8_t number, uint8_t chunk)
+{
+  Serial.printf("Parameter Read %u chunk %u\r\n", number, chunk);
+
+  if(chunk == 0) {
+    _paramDataSize = 0;
+    _currentFieldChunk = 0;
+    _chunkRemaining = 0;
+    _isParamReading = true;
+    memset(_paramData, 0, CRSF_MAX_CHUNKS * CRSF_MAX_CHUNK_SIZE);
+  }
+
+  uint8_t packetCmd[5];
+  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_READ; // 0x2D
+  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
+  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
+  packetCmd[3] = number;
+  packetCmd[4] = chunk;
+  
+  writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_READ, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
 }
 

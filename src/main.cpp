@@ -200,7 +200,7 @@ void writeBroadcastPing(uint8_t addr)
   crsfInst.waitForRxPacket(1000);
 }
 
-#define CRSF_TIME_BETWEEN_FRAMES_US     4000 // 4 ms 250Hz
+//#define CRSF_TIME_BETWEEN_FRAMES_US     4000 // 4 ms 250Hz
 //#define CRSF_TIME_BETWEEN_FRAMES_US     3003 // 3.003 ms 333Hz
 //#define CRSF_TIME_BETWEEN_FRAMES_US     2000 // 2 ms 500Hz
 
@@ -332,62 +332,63 @@ void setup() {
 
   crsfBus.begin(CRSF_BAUDRATE, SERIAL_8N1, PIN_RX_OUT, PIN_TX_OUT, false, 500); // None invert, 500ms timeout  
   crsfInst.begin(crsfBus);
+  
+  duplex_set_RX();
 }
 
 int channels[CRSF_NUM_CHANNELS] = { 0 };
 
 // the loop function runs over and over again forever
 void loop() {
-  duplex_set_RX();
-
-  crsfInst.update();
-
   uint32_t timeNow = micros();
   static unsigned long lastUpdate = 0;
   static uint32_t loopCount = 0;
   static uint32_t txInterval = TxInterval[s_packetRate];
   
+  static uint8_t paramNumber = 0xff; 
+  
+  crsfInst.update();
+
   if(timeNow - lastUpdate >= txInterval) {
-    if(digitalRead(BOOT_BUILTIN) == LOW || digitalRead(A4) == LOW) {
+    if(digitalRead(BOOT_BUILTIN) == LOW) {
+
+      if(crsfInst.getIsParamReading() == false) {
+        paramNumber++;
+        if(paramNumber >= crsfInst.getDeviceFieldCount())
+          paramNumber = 0;
+//Serial.printf("paramNumber = %u\r\n", paramNumber);
+        crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
+      }
+    } else if(digitalRead(A4) == LOW) {
       for(int i=0;i<CRSF_NUM_CHANNELS;++i) {
         channels[i] = 2000;
       }
-      duplex_set_TX();
       sendChannels(CRSF_ADDRESS_CRSF_TRANSMITTER, channels);
-#if 0      
-      uint8_t fieldCount = crsfInst.getDeviceFieldCount();
-      if(fieldCount > 0) {
-        for(int i=0;i<fieldCount;++i) {
-          uint8_t chunk_number = 0;
-        }
-      }
-#endif      
     } else {
       if(loopCount <= 1000) { // repeat 1000 packets to build connection to TX module
-	duplex_set_TX();
 	sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 	loopCount++;
       } else if(loopCount > 1000 && loopCount <= 1005) {
         if(crsfInst.getDeviceAddress() == 0) { // Wait for device response
-          duplex_set_TX();
           writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
           loopCount--;
         } else
           loopCount++;
       } else if(loopCount > 1005 && loopCount <= 1010) {
-        duplex_set_TX();
         writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
         loopCount++;
       } else if(loopCount > 1010 && loopCount <= 1015) {
-        duplex_set_TX();
         writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
 	loopCount++;
       } else if(loopCount > 1015 && loopCount <= 1020) {
-        duplex_set_TX();
         writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, s_modelId);
 	loopCount++;
       } else {
-        duplex_set_TX();
+        if(crsfInst.getChunkRemaining() > 0) {
+          crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, crsfInst.getCurrentFieldChunk());
+          //delayMicroseconds(1000);
+          crsfInst.waitForRxPacket(100);
+        } 
         sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
       }      
     }

@@ -18,6 +18,9 @@
 // Clashes with CRSF_ADDRESS_FLIGHT_CONTROLLER
 #define CRSF_SYNC_BYTE 0XC8
 
+#define CRSF_MAX_CHUNK_SIZE 58 // 64 - header - type - destination - origin
+#define CRSF_MAX_CHUNKS 8     // not in specification. Max observed is 3 for Nano RX
+
 enum {
     CRSF_FRAME_LENGTH_ADDRESS = 1, // length of ADDRESS field
     CRSF_FRAME_LENGTH_FRAMELENGTH = 1, // length of FRAMELENGTH field
@@ -79,6 +82,26 @@ typedef enum
     CRSF_ADDRESS_CRSF_RECEIVER = 0xEC,
     CRSF_ADDRESS_CRSF_TRANSMITTER = 0xEE,
 } crsf_addr_e;
+
+typedef enum : uint8_t
+{
+    CRSF_UINT8 = 0,
+    CRSF_INT8 = 1,
+    CRSF_UINT16 = 2,
+    CRSF_INT16 = 3,
+    CRSF_UINT32 = 4,
+    CRSF_INT32 = 5,
+    CRSF_UINT64 = 6,
+    CRSF_INT64 = 7,
+    CRSF_FLOAT = 8,
+    CRSF_TEXT_SELECTION = 9,
+    CRSF_STRING = 10,
+    CRSF_FOLDER = 11,
+    CRSF_INFO = 12,
+    CRSF_COMMAND = 13,
+    CRSF_VTX = 15,
+    CRSF_OUT_OF_RANGE = 127,
+} crsf_value_type_e;
 
 typedef struct crsf_header_s
 {
