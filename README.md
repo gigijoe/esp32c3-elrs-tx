@@ -2,10 +2,19 @@
 
 This project is intent to make use of ELRS TX Module to do real time task, such as remote button trigger.
 
-  Button ------ [D5] [ESP32-C3] [UART] -------- [SIG][ELRS TX][RF]  .......... [RF][ELRS RX][RC PWM] --------- [RC PWM RELAY] - ON/OFF  
-                                         CRSF                          2.4G                            RC PWM   
+Button ------ [D5] [ESP32-C3] [UART] ------ [SIG][ELRS TX][RF] ...... [RF][ELRS RX][PWM] ------ [PWM RELAY] - ON/OFF  
+
 # Feature
-                                         
+
+* Read device information
+* Read parameters
+* Broadcast ping
+* Set packet rate
+* Set Tx power
+* Set model ID
+* Set model match
+* Send channels data
+                                        
 # Dependence
 
 https://github.com/AlfredoSystems/AlfredoCRSF/tree/main
@@ -16,10 +25,10 @@ https://michiel.vanderwulp.be/platformio-core-cli-installation-linux.html
 
 ## PlatformIO
 
-alias get_pio='source ~/.platformio/penv/bin/activate'
-get_pio
-pio run
-pio run -t upload
+* alias get_pio='source ~/.platformio/penv/bin/activate'
+* get_pio
+* pio run
+* pio run -t upload
 
 ## Reference
 
