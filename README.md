@@ -17,11 +17,11 @@ Button ------ [D5] [ESP32-C3] [UART] ------ [SIG][ELRS TX][RF] ...... [RF][ELRS 
 
 # Hardware
 
-ESP32-C3 super mini
-DC-DC 5V power module
-Radiomaster Ranger Micro 2.4G TX module
-Radiomaster ER6G 2.4G receiver
-RC PWM relay module
+* ESP32-C3 super mini
+* DC-DC 5V power module
+* Radiomaster Ranger Micro 2.4G TX module
+* Radiomaster ER6G 2.4G receiver
+* RC PWM relay module
                              
 # Dependence
 
