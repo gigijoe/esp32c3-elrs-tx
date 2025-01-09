@@ -10,11 +10,19 @@ Button ------ [D5] [ESP32-C3] [UART] ------ [SIG][ELRS TX][RF] ...... [RF][ELRS 
 * Read parameters
 * Broadcast ping
 * Set packet rate
-* Set Tx power
+* Set Tx power (25mw to 1000mw)
 * Set model ID
 * Set model match
 * Send channels data
-                                        
+
+# Hardware
+
+ESP32-C3 super mini
+DC-DC 5V power module
+Radiomaster Ranger Micro 2.4G TX module
+Radiomaster ER6G 2.4G receiver
+RC PWM relay module
+                             
 # Dependence
 
 https://github.com/AlfredoSystems/AlfredoCRSF/tree/main
