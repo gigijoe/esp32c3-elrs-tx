@@ -49,9 +49,13 @@ public:
     
     // Parameter
     void writeParameterRead(uint8_t addr, uint8_t number, uint8_t chunk);
+    uint8_t getCurrentParamNumber() { return _currentParamNumber; }
     uint8_t getCurrentFieldChunk() { return _currentFieldChunk; }
     uint8_t getChunkRemaining() { return _chunkRemaining; }
     bool getIsParamReading() { return _isParamReading; }
+    bool getIsParamReadingDone() { return _isParamReadingDone; }
+    
+    void writeParameterWrite(uint8_t addr, uint8_t number, uint8_t value);
     
 private:
     Stream* _port;
@@ -75,11 +79,13 @@ private:
     uint8_t _device_address;
     char _device_name[CRSF_MAX_NAME_LEN];
     deviceInformationPacket_t _deviceInfo;
+    uint8_t _currentParamNumber;
     uint8_t _currentFieldChunk;
     uint8_t _chunkRemaining;
     uint8_t _paramData[CRSF_MAX_CHUNKS * CRSF_MAX_CHUNK_SIZE];
     uint32_t _paramDataSize;
     bool _isParamReading;
+    bool _isParamReadingDone;
 
     void handleSerialIn();
     void handleByteReceived();

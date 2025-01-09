@@ -2,7 +2,7 @@
 
 AlfredoCRSF::AlfredoCRSF() :
     _crc(0xd5),
-    _lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown"), _currentFieldChunk(0), _chunkRemaining(0), _paramDataSize(0)
+    _lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown"), _currentParamNumber(0), _currentFieldChunk(0), _chunkRemaining(0), _paramDataSize(0), _isParamReading(false), _isParamReadingDone(false)
 {
      
 }
@@ -124,11 +124,13 @@ void AlfredoCRSF::processPacketIn(uint8_t len)
             packetDeviceInfo(extHdr); 
             break;
         case CRSF_FRAMETYPE_PARAMETER_SETTINGS_ENTRY:
+#if 0
             Serial.printf("Device Address 0x%02x, Frame Type 0x%02x\r\n", hdr->device_addr, hdr->type);
             for(int i=0;i<hdr->frame_size;i++) {
                 Serial.printf("0x%02x ", _rxBuf[i+2]);
             }
             Serial.printf("\r\n");
+#endif
             packetParameterSettingsEntry(extHdr);
             break;
         case CRSF_FRAMETYPE_RADIO_ID: // 0x3A
@@ -309,21 +311,31 @@ void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
   uint8_t chunkRemaining = data[1];  
   uint8_t dataSize = p->frame_size - 6; // type, dest_addr, orig_addr, number, chunk_remaining, crc
   
-  if(_isParamReading == false)
+  if(_isParamReading == false) {
+Serial.printf("Not param reading phase ...\r\n");
     return;
+  }
   
+  if(_currentParamNumber != number) {
+Serial.printf("Param number miss match...\r\n");
+    return;
+  }
+  
+  
+  if(_chunkRemaining != 0 && 
+      chunkRemaining >= _chunkRemaining) {
+Serial.printf("Repeat entry ...\r\n");
+    return; // Repeat entry
+  } else
+    _chunkRemaining = chunkRemaining;
+
   if(_chunkRemaining == 0xff) {
     _chunkRemaining = 0;
     _currentFieldChunk = 0;
     _isParamReading = false;
+Serial.printf("Chunk remaining is 0xff ...\r\n");
     return;
   }
-  
-  if(_chunkRemaining != 0 && 
-      chunkRemaining >= _chunkRemaining) {
-    return; // Repeat entry
-  } else
-    _chunkRemaining = chunkRemaining;
   
   memcpy(&_paramData[_paramDataSize], &data[2], dataSize);
   _paramDataSize += dataSize;
@@ -368,8 +380,13 @@ void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
         strlcpy(unit, (const char *)&_paramData[n], CRSF_MAX_NAME_LEN);
         Serial.printf("\tUnit : %s\r\n", unit);
         } break;
-      case CRSF_COMMAND:
-        break;
+      case CRSF_COMMAND: {
+        Serial.printf("\tState : %u\r\n", _paramData[n++]);
+        char info[CRSF_MAX_NAME_LEN];
+        strlcpy(info, (const char *)&_paramData[n], CRSF_MAX_NAME_LEN);
+        n += strlen((const char *)info) + 1; // info + '\0'
+        Serial.printf("\tInfo : %s\r\n", info);
+        } break;
       case CRSF_INT8: // fallthrough
       case CRSF_UINT8:
         break;
@@ -377,8 +394,12 @@ void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
       case CRSF_UINT16:
         break;
       case CRSF_STRING: // fallthough
-      case CRSF_INFO:
-        break;
+      case CRSF_INFO: {
+        char info[256];
+        strlcpy(info, (const char *)&_paramData[n], 256);
+        n += strlen((const char *)info) + 1; // info + '\0'
+        Serial.printf("\tInfo : %s\r\n", info);        
+        } break;
       case CRSF_FOLDER:
         for(int i=n;i<dataSize;++i) {
           if(_paramData[i] == 0xff)
@@ -395,6 +416,7 @@ void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
     
     _currentFieldChunk = 0;
     _isParamReading = false;
+    _isParamReadingDone = true;
   }
 }
 
@@ -422,10 +444,10 @@ void AlfredoCRSF::packetRadioId(const crsf_ext_header_t *p)
 
 void AlfredoCRSF::write(const uint8_t *buf, size_t len)
 {
-    duplex_set_TX();
+duplex_set_TX();
     _port->write(buf, len);
     _port->flush();
-    duplex_set_RX();
+duplex_set_RX();
 }
 
 void AlfredoCRSF::queuePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len)
@@ -487,13 +509,17 @@ bool AlfredoCRSF::waitForRxPacket(uint32_t timeout_ms)
 
 void AlfredoCRSF::writeParameterRead(uint8_t addr, uint8_t number, uint8_t chunk)
 {
-  Serial.printf("Parameter Read %u chunk %u\r\n", number, chunk);
+  _currentParamNumber = number;
+  //_currentFieldChunk = chunk;
+
+  //Serial.printf("Parameter Read %u chunk %u\r\n", number, chunk);
 
   if(chunk == 0) {
     _paramDataSize = 0;
     _currentFieldChunk = 0;
     _chunkRemaining = 0;
     _isParamReading = true;
+    _isParamReadingDone = false;
     memset(_paramData, 0, CRSF_MAX_CHUNKS * CRSF_MAX_CHUNK_SIZE);
   }
 
@@ -505,5 +531,17 @@ void AlfredoCRSF::writeParameterRead(uint8_t addr, uint8_t number, uint8_t chunk
   packetCmd[4] = chunk;
   
   writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_READ, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
+}
+
+void AlfredoCRSF::writeParameterWrite(uint8_t addr, uint8_t number, uint8_t value)
+{
+  uint8_t packetCmd[5];
+  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_WRITE; // 0x2D
+  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
+  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
+  packetCmd[3] = number;
+  packetCmd[4] = value;
+  
+  writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
 }
 

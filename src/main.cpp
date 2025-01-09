@@ -24,6 +24,51 @@
 HardwareSerial crsfBus(1);
 AlfredoCRSF crsfInst;
 
+void ICACHE_RAM_ATTR duplex_set_RX()
+{
+#if 1
+  portDISABLE_INTERRUPTS();
+  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_RX_OUT, GPIO_MODE_INPUT));
+#if GPIO_PIN_RCSIGNAL_UART_INV
+  //gpio_matrix_out((gpio_num_t)PIN_TX_OUT, SIG_GPIO_OUT_IDX, true, true); // Detach TX & invertOut (Map out pin to gpio)
+  gpio_matrix_in((gpio_num_t)PIN_RX_OUT, U1RXD_IN_IDX, true);
+  gpio_pulldown_en((gpio_num_t)PIN_RX_OUT);
+  gpio_pullup_dis((gpio_num_t)PIN_RX_OUT);
+#else
+  //gpio_matrix_out((gpio_num_t)PIN_TX_OUT, SIG_GPIO_OUT_IDX, false, false); // Detach TX (Map out pin to gpio)
+  gpio_matrix_in((gpio_num_t)PIN_RX_OUT, U1RXD_IN_IDX, false);
+  gpio_pullup_en((gpio_num_t)PIN_RX_OUT);
+  gpio_pulldown_dis((gpio_num_t)PIN_RX_OUT);
+#endif
+  portENABLE_INTERRUPTS();
+#endif
+}
+
+void ICACHE_RAM_ATTR duplex_set_TX()
+{
+#if 1
+  portDISABLE_INTERRUPTS();
+  ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)PIN_TX_OUT, GPIO_FLOATING));
+  ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)PIN_RX_OUT, GPIO_FLOATING));
+#if GPIO_PIN_RCSIGNAL_UART_INV
+  ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)PIN_TX_OUT, 0));
+  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_TX_OUT, GPIO_MODE_OUTPUT));
+  //constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30;             // routes 0 to matrix slot
+  constexpr uint8_t MATRIX_DETACH_IN_LOW = GPIO_FUNC_IN_LOW;
+  gpio_matrix_in(MATRIX_DETACH_IN_LOW, U1RXD_IN_IDX, false); // Disconnect RX from all pads
+  gpio_matrix_out((gpio_num_t)PIN_TX_OUT, U1TXD_OUT_IDX, true, false); // Attach TX & invertOut (Map ou pin to U1TXD)
+#else
+  ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)PIN_TX_OUT, 1));
+  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_TX_OUT, GPIO_MODE_OUTPUT));
+  //constexpr uint8_t MATRIX_DETACH_IN_HIGH = 0x38;             // routes 1 to matrix slot
+  constexpr uint8_t MATRIX_DETACH_IN_HIGH = GPIO_FUNC_IN_HIGH;
+  gpio_matrix_in(MATRIX_DETACH_IN_HIGH, U1RXD_IN_IDX, false); // Disconnect RX from all pads
+  gpio_matrix_out((gpio_num_t)PIN_TX_OUT, U1TXD_OUT_IDX, false, false); // Attach TX (Map ou pin to U1TXD)
+#endif
+  portENABLE_INTERRUPTS();
+#endif
+}
+
 // Fallback method to send default channel values
 void sendFallbackChannels(uint8_t addr) {
   crsf_channels_t crsfChannels = { 0 };
@@ -115,32 +160,6 @@ uint8_t crc8_BA(const uint8_t * ptr, uint32_t len)
   return crc;
 }
 
-void writeReadParam(uint8_t addr, uint8_t fieldId, uint8_t fieldChunk)
-{
-  uint8_t packetCmd[5];
-  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_READ; // 0x2C
-  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
-  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
-  packetCmd[3] = fieldId;
-  packetCmd[4] = fieldChunk;
-  
-  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_READ, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
-  
-  crsfInst.waitForRxPacket(1000);
-}
-
-void writeWriteParam(uint8_t addr, uint8_t fieldId, uint8_t param)
-{
-  uint8_t packetCmd[5];
-  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_WRITE; // 0x2D
-  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
-  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
-  packetCmd[3] = fieldId;
-  packetCmd[4] = param;
-  
-  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
-}
-
 #define CRSF_COMMAND_SUBCMD_RX         0x10 
 #define COMMAND_SUBCMD_RX_BIND         0x01
 #define COMMAND_MODEL_SELECT_ID        0x05
@@ -161,7 +180,6 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 }
 
 // ELRS command
-//#define ELRS_ADDRESS                    0xEE
 #define ELRS_BIND_COMMAND               0xFF
 #define ELRS_WIFI_COMMAND               0xFE
 #define ELRS_PKT_RATE_COMMAND           0x01
@@ -170,70 +188,54 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 #define ELRS_MODEL_MATCH_COMMAND        0x04
 #define ELRS_POWER_COMMAND              0x06
 #define ELRS_BLE_JOYSTIC_COMMAND        17
-//#define TYPE_PING_DEVICES               0x28
-//#define TYPE_SETTINGS_WRITE             0x2D
-//#define ADDR_RADIO                      0xEA //  Radio Transmitter
-
-void writeElrsCommand(uint8_t addr, uint8_t cmd, uint8_t value) 
-{
-  uint8_t packetCmd[5];
-  packetCmd[0] = CRSF_FRAMETYPE_PARAMETER_WRITE; // 0x2D
-  packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
-  packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
-  packetCmd[3] = cmd;
-  packetCmd[4] = value;
-  
-  crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_PARAMETER_WRITE, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 2);
-}
 
 void writeElrsStatusRequest(uint8_t addr)
 {
-  writeElrsCommand(addr, 0, 0);
-  
-  crsfInst.waitForRxPacket(1000);
+  crsfInst.writeParameterWrite(addr, 0, 0); // Parameter is 0 special case for elrs linkstat request
+  crsfInst.waitForRxPacket(100);
 }
 
 void writeBroadcastPing(uint8_t addr)
 {
   crsfInst.writeExtPacket(CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
-  
-  crsfInst.waitForRxPacket(1000);
+  crsfInst.waitForRxPacket(100);
 }
 
-//#define CRSF_TIME_BETWEEN_FRAMES_US     4000 // 4 ms 250Hz
-//#define CRSF_TIME_BETWEEN_FRAMES_US     3003 // 3.003 ms 333Hz
-//#define CRSF_TIME_BETWEEN_FRAMES_US     2000 // 2 ms 500Hz
+/*
+[ Parameter Read 6 ]
+	Parent Folder : 5
+	Dtat Type : 9
+	Name : Max Power
+	Options : 25;50;100;250;500;1000
+	Value : 5
+	Min : 0
+	Max : 5
+	Default : 0
+	Unit : mW
 
-typedef enum
+*/
+
+typedef enum 
 {
-  PWR_10mW = 0,
-  PWR_25mW = 1,
-  PWR_50mW = 2,
-  PWR_100mW = 3,
-  PWR_250mW = 4,
-  PWR_500mW = 5,
-  PWR_1000mW = 6,
-  PWR_2000mW = 7,
-  PWR_COUNT = 8,
-  PWR_MATCH_TX = PWR_COUNT,
-} PowerLevels_e;
+  PWR_25mW = 0,
+  PWR_50mW = 1,
+  PWR_100mW = 2,
+  PWR_250mW = 3,
+  PWR_500mW = 4,
+  PWR_1000mW = 5,
+} MaxTxPower_e;
 
 /*
-#if defined(RADIO_SX127X)
-#define STR_LUA_PACKETRATES \
-    "D50Hz(-112dBm);25Hz(-123dBm);50Hz(-120dBm);100Hz(-117dBm);100Hz Full(-112dBm);200Hz(-112dBm)"
-#elif defined(RADIO_LR1121)
-#define STR_LUA_PACKETRATES \
-    "K1000 Full Low Band;DK500 2.4G;200 Full Low Band;250 Low Band;X100 Full;X150;" \
-    "50 2.4G;100 Full 2.4G;150 2.4G;250 2.4G;333 Full 2.4G;500 2.4G;" \
-    "50 Low Band;100 Low Band;100 Full Low Band;200 Low Band"
-#elif defined(RADIO_SX128X)
-#define STR_LUA_PACKETRATES \
-    "50Hz(-115dBm);100Hz Full(-112dBm);150Hz(-112dBm);250Hz(-108dBm);333Hz Full(-105dBm);500Hz(-105dBm);" \
-    "D250(-104dBm);D500(-104dBm);F500(-104dBm);F1000(-104dBm)"
-#else
-#error Invalid radio configuration!
-#endif
+[ Parameter Read 1 ]
+	Parent Folder : 0
+	Dtat Type : 9
+	Name : Packet Rate
+	Options : 50Hz(-115dBm);100Hz Full(-112dBm);150Hz(-112dBm);250Hz(-108dBm);333Hz Full(-105dBm);500Hz(-105dBm);D250(-104dBm);D500(-104dBm);F500(-104dBm);F1000(-104dBm)
+	Value : 3
+	Min : 0
+	Max : 9
+	Default : 0
+	Unit : 
 */
 
 typedef enum
@@ -252,58 +254,14 @@ typedef enum
 
 uint32_t TxInterval[] = { 20000, 10000, 6666, 4000, 3003, 2000, 1000, 1000, 2000, 1000 };
 
-PowerLevels_e s_powerLevel = PWR_500mW;
+MaxTxPower_e s_maxTxPower = PWR_250mW;
 PacketRates_e s_packetRate = PKR_250Hz;
 uint8_t s_modelId = 3;
+bool s_modelMatch = true;
 
 /*
  *
  */
-
-void ICACHE_RAM_ATTR duplex_set_RX()
-{
-#if 1
-  portDISABLE_INTERRUPTS();
-  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_RX_OUT, GPIO_MODE_INPUT));
-#if GPIO_PIN_RCSIGNAL_UART_INV
-  //gpio_matrix_out((gpio_num_t)PIN_TX_OUT, SIG_GPIO_OUT_IDX, true, true); // Detach TX & invertOut (Map out pin to gpio)
-  gpio_matrix_in((gpio_num_t)PIN_RX_OUT, U1RXD_IN_IDX, true);
-  gpio_pulldown_en((gpio_num_t)PIN_RX_OUT);
-  gpio_pullup_dis((gpio_num_t)PIN_RX_OUT);
-#else
-  //gpio_matrix_out((gpio_num_t)PIN_TX_OUT, SIG_GPIO_OUT_IDX, false, false); // Detach TX (Map out pin to gpio)
-  gpio_matrix_in((gpio_num_t)PIN_RX_OUT, U1RXD_IN_IDX, false);
-  gpio_pullup_en((gpio_num_t)PIN_RX_OUT);
-  gpio_pulldown_dis((gpio_num_t)PIN_RX_OUT);
-#endif
-  portENABLE_INTERRUPTS();
-#endif
-}
-
-void ICACHE_RAM_ATTR duplex_set_TX()
-{
-#if 1
-  portDISABLE_INTERRUPTS();
-  ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)PIN_TX_OUT, GPIO_FLOATING));
-  ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)PIN_RX_OUT, GPIO_FLOATING));
-#if GPIO_PIN_RCSIGNAL_UART_INV
-  ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)PIN_TX_OUT, 0));
-  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_TX_OUT, GPIO_MODE_OUTPUT));
-  //constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30;             // routes 0 to matrix slot
-  constexpr uint8_t MATRIX_DETACH_IN_LOW = GPIO_FUNC_IN_LOW;
-  gpio_matrix_in(MATRIX_DETACH_IN_LOW, U1RXD_IN_IDX, false); // Disconnect RX from all pads
-  gpio_matrix_out((gpio_num_t)PIN_TX_OUT, U1TXD_OUT_IDX, true, false); // Attach TX & invertOut (Map ou pin to U1TXD)
-#else
-  ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)PIN_TX_OUT, 1));
-  ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)PIN_TX_OUT, GPIO_MODE_OUTPUT));
-  //constexpr uint8_t MATRIX_DETACH_IN_HIGH = 0x38;             // routes 1 to matrix slot
-  constexpr uint8_t MATRIX_DETACH_IN_HIGH = GPIO_FUNC_IN_HIGH;
-  gpio_matrix_in(MATRIX_DETACH_IN_HIGH, U1RXD_IN_IDX, false); // Disconnect RX from all pads
-  gpio_matrix_out((gpio_num_t)PIN_TX_OUT, U1TXD_OUT_IDX, false, false); // Attach TX (Map ou pin to U1TXD)
-#endif
-  portENABLE_INTERRUPTS();
-#endif
-}
 
 hw_timer_t *timer1 = NULL;
 portMUX_TYPE timerMux1 = portMUX_INITIALIZER_UNLOCKED;
@@ -345,20 +303,21 @@ void loop() {
   static uint32_t loopCount = 0;
   static uint32_t txInterval = TxInterval[s_packetRate];
   
-  static uint8_t paramNumber = 0xff; 
+  static uint8_t paramNumber = 0; 
   
   crsfInst.update();
 
   if(timeNow - lastUpdate >= txInterval) {
     if(digitalRead(BOOT_BUILTIN) == LOW) {
-
-      if(crsfInst.getIsParamReading() == false) {
+      if(crsfInst.getIsParamReadingDone()) {
         paramNumber++;
         if(paramNumber >= crsfInst.getDeviceFieldCount())
           paramNumber = 0;
-//Serial.printf("paramNumber = %u\r\n", paramNumber);
-        crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
       }
+      if(crsfInst.getIsParamReading() == false) {
+        crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
+        crsfInst.waitForRxPacket(100);
+      }      
     } else if(digitalRead(A4) == LOW) {
       for(int i=0;i<CRSF_NUM_CHANNELS;++i) {
         channels[i] = 2000;
@@ -375,20 +334,46 @@ void loop() {
         } else
           loopCount++;
       } else if(loopCount > 1005 && loopCount <= 1010) {
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
+        crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
         loopCount++;
       } else if(loopCount > 1010 && loopCount <= 1015) {
-        writeElrsCommand(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_powerLevel);
+        crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_maxTxPower);
 	loopCount++;
       } else if(loopCount > 1015 && loopCount <= 1020) {
+        crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_MODEL_MATCH_COMMAND, s_modelMatch);
+	loopCount++;
+      } else if(loopCount > 1020 && loopCount <= 1025) {
         writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, s_modelId);
 	loopCount++;
       } else {
-        if(crsfInst.getChunkRemaining() > 0) {
+#if 1
+        if(paramNumber < crsfInst.getDeviceFieldCount()) {
+          if(crsfInst.getIsParamReadingDone()) {
+            paramNumber++;
+            if(paramNumber < crsfInst.getDeviceFieldCount()) {
+              crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
+              //crsfInst.waitForRxPacket(100);
+            }
+          } else if(crsfInst.getIsParamReading()) {
+            if(crsfInst.getChunkRemaining() > 0) {
+              crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, crsfInst.getCurrentFieldChunk());
+              //delayMicroseconds(1000);
+              //crsfInst.waitForRxPacket(100);
+            }
+          } else if(paramNumber == 0 && 
+              crsfInst.getIsParamReading() == false) {
+            crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
+            //crsfInst.waitForRxPacket(100);
+          }  
+        }
+#else
+        if(crsfInst.getIsParamReading() && 
+            crsfInst.getChunkRemaining() > 0) {
           crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, crsfInst.getCurrentFieldChunk());
           //delayMicroseconds(1000);
-          crsfInst.waitForRxPacket(100);
-        } 
+          //crsfInst.waitForRxPacket(100);
+        } else
+#endif
         sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
       }      
     }

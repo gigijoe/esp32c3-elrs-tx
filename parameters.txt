@@ -1,0 +1,231 @@
+[ Device Onformation ]
+	Device Address 0xee
+	Device Name RM Ranger Micro
+	Serial No 0x454c5253
+	Serial No ELRS
+	Hardware Version 0x00000000
+	Foftware Version 0x00030000
+	Field Count 27
+	Parameter Version 0
+[ Parameter Read 0 ]
+	Parent Folder : 0
+	Dtat Type : 11
+	Name : HooJ
+0x01 0x02 0x03 0x04 0x05 0x09 0x0f 0x14 0x18 0x19 0x1a 0x1b 
+Repeat entry ...
+Repeat entry ...
+[ Parameter Read 1 ]
+	Parent Folder : 0
+	Dtat Type : 9
+	Name : Packet Rate
+	Options : 50Hz(-115dBm);100Hz Full(-112dBm);150Hz(-112dBm);250Hz(-108dBm);333Hz Full(-105dBm);500Hz(-105dBm);D250(-104dBm);D500(-104dBm);F500(-104dBm);F1000(-104dBm)
+	Value : 3
+	Min : 0
+	Max : 9
+	Default : 0
+	Unit : 
+Param number miss match...
+[ Parameter Read 2 ]
+	Parent Folder : 0
+	Dtat Type : 9
+	Name : Telem Ratio
+	Options : Std;Off;1:128;1:64;1:32;1:16;1:8;1:4;1:2;Race
+	Value : 0
+	Min : 0
+	Max : 9
+	Default : 0
+	Unit :  (1:64)
+Param number miss match...
+[ Parameter Read 3 ]
+	Parent Folder : 0
+	Dtat Type : 9
+	Name : Switch Mode
+	Options : Wide;Hybrid
+	Value : 0
+	Min : 0
+	Max : 1
+	Default : 0
+	Unit : 
+[ Parameter Read 4 ]
+	Parent Folder : 0
+	Dtat Type : 9
+	Name : Model Match
+	Options : Off;On
+	Value : 1
+	Min : 0
+	Max : 1
+	Default : 0
+	Unit :  (ID: 3)
+[ Parameter Read 5 ]
+	Parent Folder : 0
+	Dtat Type : 11
+	Name : TX Power (500mW)
+
+[ Parameter Read 6 ]
+	Parent Folder : 5
+	Dtat Type : 9
+	Name : Max Power
+	Options : 25;50;100;250;500;1000
+	Value : 4
+	Min : 0
+	Max : 5
+	Default : 0
+	Unit : mW
+[ Parameter Read 7 ]
+	Parent Folder : 5
+	Dtat Type : 9
+	Name : Dynamic
+	Options : Off;Dyn;AUX9;AUX10;AUX11;AUX12
+	Value : 0
+	Min : 0
+	Max : 5
+	Default : 0
+	Unit : 
+[ Parameter Read 8 ]
+	Parent Folder : 5
+	Dtat Type : 9
+	Name : Fan Thresh
+	Options : 10mW;25mW;50mW;100mW;250mW;500mW;1000mW;2000mW;Never
+	Value : 4
+	Min : 0
+	Max : 8
+	Default : 0
+	Unit : 
+Param number miss match...
+[ Parameter Read 9 ]
+	Parent Folder : 0
+	Dtat Type : 11
+	Name : VTX Administrator
+
+[ Parameter Read 10 ]
+	Parent Folder : 9
+	Dtat Type : 9
+	Name : Band
+	Options : Off;A;B;E;F;R;L
+	Value : 0
+	Min : 0
+	Max : 6
+	Default : 0
+	Unit : 
+[ Parameter Read 11 ]
+	Parent Folder : 9
+	Dtat Type : 9
+	Name : Channel
+	Options : 1;2;3;4;5;6;7;8
+	Value : 0
+	Min : 0
+	Max : 7
+	Default : 0
+	Unit : 
+[ Parameter Read 12 ]
+	Parent Folder : 9
+	Dtat Type : 9
+	Name : Pwr Lvl
+	Options : -;1;2;3;4;5;6;7;8
+	Value : 0
+	Min : 0
+	Max : 8
+	Default : 0
+	Unit : 
+Repeat entry ...
+[ Parameter Read 13 ]
+	Parent Folder : 9
+	Dtat Type : 9
+	Name : Pitmode
+	Options : Off;On;AUX1�;AUX1�;AUX2�;AUX2�;AUX3�;AUX3�;AUX4�;AUX4�;AUX5�;AUX5�;AUX6�;AUX6�;AUX7�;AUX7�;AUX8�;AUX8�;AUX9�;AUX9�;AUX10�;AUX10�
+	Value : 0
+	Min : 0
+	Max : 21
+	Default : 0
+	Unit : 
+Param number miss match...
+[ Parameter Read 14 ]
+	Parent Folder : 9
+	Dtat Type : 13
+	Name : Send VTx
+	State : 0
+	Info : �
+[ Parameter Read 15 ]
+	Parent Folder : 0
+	Dtat Type : 11
+	Name : WiFi Connectivity
+
+[ Parameter Read 16 ]
+	Parent Folder : 15
+	Dtat Type : 13
+	Name : Enable WiFi
+	State : 0
+	Info : �
+[ Parameter Read 17 ]
+	Parent Folder : 15
+	Dtat Type : 13
+	Name : Enable Rx WiFi
+	State : 0
+	Info : �
+[ Parameter Read 18 ]
+	Parent Folder : 15
+	Dtat Type : 13
+	Name : Enable Backpack WiF
+	State : 0
+	Info : 
+[ Parameter Read 19 ]
+	Parent Folder : 15
+	Dtat Type : 13
+	Name : Enable VRx WiFi
+	State : 0
+	Info : �
+[ Parameter Read 20 ]
+	Parent Folder : 0
+	Dtat Type : 11
+	Name : Backpack
+
+Repeat entry ...
+[ Parameter Read 21 ]
+	Parent Folder : 20
+	Dtat Type : 9
+	Name : DVR Rec
+	Options : Off;AUX1�;AUX1�;AUX2�;AUX2�;AUX3�;AUX3�;AUX4�;AUX4�;AUX5�;AUX5�;AUX6�;AUX6�;AUX7�;AUX7�;AUX8�;AUX8�;AUX9�;AUX9�;AUX10�;AUX10�
+	Value : 0
+	Min : 0
+	Max : 20
+	Default : 0
+	Unit : 
+Param number miss match...
+[ Parameter Read 22 ]
+	Parent Folder : 20
+	Dtat Type : 9
+	Name : DVR Srt Dly
+	Options : 0s;5s;15s;30s;45s;1min;2min
+	Value : 0
+	Min : 0
+	Max : 6
+	Default : 0
+	Unit : 
+[ Parameter Read 23 ]
+	Parent Folder : 20
+	Dtat Type : 9
+	Name : DVR Stp Dly
+	Options : 0s;5s;15s;30s;45s;1min;2min
+	Value : 0
+	Min : 0
+	Max : 6
+	Default : 0
+	Unit : 
+[ Parameter Read 24 ]
+	Parent Folder : 0
+	Dtat Type : 13
+	Name : BLE Joystick
+	State : 0
+	Info : �
+[ Parameter Read 25 ]
+	Parent Folder : 0
+	Dtat Type : 13
+	Name : Bind
+	State : 0
+	Info : �
+[ Parameter Read 26 ]
+	Parent Folder : 0
+	Dtat Type : 12
+	Name : Bad/Good
+	Info : 0/0
+
