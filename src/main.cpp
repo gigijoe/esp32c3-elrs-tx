@@ -201,6 +201,11 @@ void writeBroadcastPing(uint8_t addr)
 	crsfInst.waitForRxPacket(100);
 }
 
+void writeBinding(uint8_t addr, bool onOff)
+{
+	crsfInst.writeParameterWrite(addr, ELRS_BIND_COMMAND, onOff ? 1 : 0);
+}
+
 /*
 [ Parameter Read 6 ]
 	Parent Folder : 5
