@@ -11,8 +11,16 @@
 
   Adapted from:
   https://www.arduino.cc/en/Tutorial/BuiltInExamples/Blink
+
+  Official CRSF Protocol Specifications:
+  https://github.com/crsf-wg/crsf/wiki
+
 */
 #include <Arduino.h>
+
+#include <Preferences.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 
 #include <AlfredoCRSF.h>
 #include <HardwareSerial.h>
@@ -161,8 +169,8 @@ uint8_t crc8_BA(const uint8_t * ptr, uint32_t len)
 }
 
 #define CRSF_COMMAND_SUBCMD_RX         0x10 
-#define COMMAND_SUBCMD_RX_BIND         0x01
-#define COMMAND_MODEL_SELECT_ID        0x05
+#define CRSF_COMMAND_SUBCMD_RX_BIND    0x01
+#define CRSF_COMMAND_MODEL_SELECT_ID   0x05
 
 void writeModelId(uint8_t addr, uint8_t modelId)
 {
@@ -172,7 +180,7 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 	packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
 	packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
 	packetCmd[3] = CRSF_COMMAND_SUBCMD_RX; // 0x10
-	packetCmd[4] = COMMAND_MODEL_SELECT_ID; // 0x05
+	packetCmd[4] = CRSF_COMMAND_MODEL_SELECT_ID; // 0x05
 	packetCmd[5] = modelId;
 	packetCmd[6] = crc8_BA((const uint8_t *)&packetCmd[0], 6);
 	
@@ -180,14 +188,17 @@ void writeModelId(uint8_t addr, uint8_t modelId)
 }
 
 // ELRS command
+//#define ELRS_ADDRESS                    0xEE // CRSF_ADDRESS_CRSF_TRANSMITTER
 #define ELRS_BIND_COMMAND               0xFF
+#define ELRS_START_COMMAND              0x04
 #define ELRS_WIFI_COMMAND               0xFE
 #define ELRS_PKT_RATE_COMMAND           0x01
-#define ELRS_TLM_RATIO_COMMAND          0x02
+#define ELRS_TELM_RATIO_COMMAND         0x02
 #define ELRS_SWITCH_MODE_COMMAND        0x03
 #define ELRS_MODEL_MATCH_COMMAND        0x04
 #define ELRS_POWER_COMMAND              0x06
 #define ELRS_BLE_JOYSTIC_COMMAND        17
+#define TYPE_SETTINGS_WRITE             0x2D
 
 void writeElrsStatusRequest(uint8_t addr)
 {
@@ -197,71 +208,45 @@ void writeElrsStatusRequest(uint8_t addr)
 
 void writeBroadcastPing(uint8_t addr)
 {
-	crsfInst.writeExtPacket(CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
+	crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_DEVICE_PING, CRSF_ADDRESS_BROADCAST, CRSF_ADDRESS_RADIO_TRANSMITTER, 0, 0);
 	crsfInst.waitForRxPacket(100);
 }
 
-void writeBinding(uint8_t addr, bool onOff)
+void writeBinding(uint8_t addr)
 {
-	crsfInst.writeParameterWrite(addr, ELRS_BIND_COMMAND, onOff ? 1 : 0);
+#if 1
+	uint8_t packetCmd[6];
+	
+	packetCmd[0] = CRSF_FRAMETYPE_COMMAND; // 0x32
+	packetCmd[1] = CRSF_ADDRESS_CRSF_TRANSMITTER; // 0xEE
+	packetCmd[2] = CRSF_ADDRESS_RADIO_TRANSMITTER; // 0xEA
+	packetCmd[3] = CRSF_COMMAND_SUBCMD_RX; // 0x10
+	packetCmd[4] = CRSF_COMMAND_SUBCMD_RX_BIND; // 0x01
+	packetCmd[5] = crc8_BA((const uint8_t *)&packetCmd[0], 5);
+
+	crsfInst.writeExtPacket(addr, CRSF_FRAMETYPE_COMMAND, CRSF_ADDRESS_CRSF_TRANSMITTER, CRSF_ADDRESS_RADIO_TRANSMITTER, &packetCmd[3], 3);
+#endif
+#if 0
+	crsfInst.writeParameterWrite(addr, ELRS_BIND_COMMAND, ELRS_START_COMMAND);
+	//crsfInst.writeParameterRead(addr, 0, 0);
+	//crsfInst.waitForRxPacket(100);
+#endif
 }
 
-/*
-[ Parameter Read 6 ]
-	Parent Folder : 5
-	Dtat Type : 9
-	Name : Max Power
-	Options : 25;50;100;250;500;1000
-	Value : 5
-	Min : 0
-	Max : 5
-	Default : 0
-	Unit : mW
+#define STR_PACKET_RATE "100Hz"
+#define KEY_PACKET_RATE_INDEX "keyPRI"
+static int s_packetRateIndex = 0;
+static uint32_t s_txInterval = 10000; // us / 100Hz
 
-*/
+#define STR_MAX_TXPOWER "100"
+#define KEY_MAX_TXPOWER_INDEX "keyMTPI"
+static int s_maxTxPowerIndex = 0;
 
-typedef enum 
-{
-	PWR_25mW = 0,
-	PWR_50mW = 1,
-	PWR_100mW = 2,
-	PWR_250mW = 3,
-	PWR_500mW = 4,
-	PWR_1000mW = 5,
-} MaxTxPower_e;
+#define STR_TELM_RATIO "1:2"
+#define KEY_TELM_RATIO_INDEX "keyTRI"
+static int s_telemRatioIndex = 0;
 
-/*
-[ Parameter Read 1 ]
-	Parent Folder : 0
-	Dtat Type : 9
-	Name : Packet Rate
-	Options : 50Hz(-115dBm);100Hz Full(-112dBm);150Hz(-112dBm);250Hz(-108dBm);333Hz Full(-105dBm);500Hz(-105dBm);D250(-104dBm);D500(-104dBm);F500(-104dBm);F1000(-104dBm)
-	Value : 3
-	Min : 0
-	Max : 9
-	Default : 0
-	Unit : 
-*/
-
-typedef enum
-{
-	PKR_50Hz = 0,
-	PKR_100Hz = 1,
-	PKR_150Hz = 2,
-	PKR_250Hz = 3,
-	PKR_333Hz = 4,
-	PKR_500Hz = 5,
-	PKR_D250 = 6,
-	PKR_D500 = 7,
-	PKR_F500 = 8,
-	PKR_F1000 = 9
-} PacketRates_e;
-
-uint32_t TxInterval[] = { 20000, 10000, 6666, 4000, 3003, 2000, 1000, 1000, 2000, 1000 };
-
-MaxTxPower_e s_maxTxPower = PWR_250mW;
-PacketRates_e s_packetRate = PKR_250Hz;
-uint8_t s_modelId = 3;
+uint8_t s_modelId = 0;
 bool s_modelMatch = true;
 
 /*
@@ -272,10 +257,8 @@ hw_timer_t *timer1 = NULL;
 portMUX_TYPE timerMux1 = portMUX_INITIALIZER_UNLOCKED;
 
 void IRAM_ATTR onTimer1() {
-	static bool toggle0 = false;
 portENTER_CRITICAL_ISR(&timerMux1);
-	digitalWrite(LED_BUILTIN, toggle0);
-	toggle0 = !toggle0;
+	digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 portEXIT_CRITICAL_ISR(&timerMux1);
 }
 
@@ -286,7 +269,18 @@ void setup() {
 	pinMode(BOOT_BUILTIN, INPUT_PULLUP);      //input pull-up resistor is enabled
 	pinMode(A4, INPUT_PULLUP);      //input pull-up resistor is enabled
 
+#if 1 // Model ID by dip switch 	
+	pinMode(ID0, INPUT_PULLUP);
+	pinMode(ID1, INPUT_PULLUP);
+	pinMode(ID2, INPUT_PULLUP);
+	pinMode(ID3, INPUT_PULLUP);
+	s_modelId = !digitalRead(ID0) | (!digitalRead(ID1) << 1) | (!digitalRead(ID2) << 2) | (!digitalRead(ID3) << 3);
+#endif
 	Serial.begin(115200);
+
+	Serial.printf("[ Host Information ]\r\n");
+	Serial.printf("\tModel ID : %d\r\n", s_modelId);
+	Serial.printf("\r\n");
 
 	timer1 = timerBegin(1, 80, true);               // timer 1, prescaler 80 --> 80MHz/80 = 1 MHz = 1us, count up
 	timerAttachInterrupt(timer1, &onTimer1, true);   // attach handler, trigger on edge 
@@ -297,6 +291,12 @@ void setup() {
 	crsfInst.begin(crsfBus);
 	
 	duplex_set_RX();
+
+	Preferences preferences;
+	preferences.begin("elrs.cfg", false);
+	s_packetRateIndex = preferences.getInt(KEY_PACKET_RATE_INDEX, 0);
+	s_maxTxPowerIndex = preferences.getInt(KEY_MAX_TXPOWER_INDEX, 0);
+	preferences.end();
 }
 
 int channels[CRSF_NUM_CHANNELS] = { 0 };
@@ -306,58 +306,142 @@ void loop() {
 	uint32_t timeNow = micros();
 	static unsigned long lastUpdate = 0;
 	static uint32_t loopCount = 0;
-	static uint32_t txInterval = TxInterval[s_packetRate];
-	
+	//static uint32_t txInterval = TxInterval[s_packetRate];
+	//static uint32_t txInterval = 10000; // us / 100Hz
+
 	static uint8_t paramNumber = 0; 
-	
+	static bool paramReadingOn = false;
+
 	crsfInst.update();
 
-	if(timeNow - lastUpdate >= txInterval) {
+	if(timeNow - lastUpdate >= s_txInterval) {
 		if(digitalRead(BOOT_BUILTIN) == LOW) {
-			if(crsfInst.getIsParamReadingDone()) {
-				paramNumber++;
-				if(paramNumber >= crsfInst.getDeviceFieldCount())
-					paramNumber = 0;
+			writeBinding(CRSF_ADDRESS_CRSF_TRANSMITTER);
+			if(paramNumber == 0) {
+				paramReadingOn = true;
 			}
-			if(crsfInst.getIsParamReading() == false) {
-				crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
-				crsfInst.waitForRxPacket(100);
-			}      
 		} else if(digitalRead(A4) == LOW) {
+			//Serial.printf("A4\r\n");
 			for(int i=0;i<CRSF_NUM_CHANNELS;++i) {
-				channels[i] = 2000;
+				if(i!=4)
+					channels[i] = 2000;
 			}
 			sendChannels(CRSF_ADDRESS_CRSF_TRANSMITTER, channels);
 		} else {
-			if(loopCount <= 1000) { // repeat 1000 packets to build connection to TX module
+			if(loopCount <= 500) { // repeat 1000 packets to build connection to TX module
 				sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 				loopCount++;
-			} else if(loopCount > 1000 && loopCount <= 1005) {
+			} else if(loopCount > 500 && loopCount <= 505) {
 				if(crsfInst.getDeviceAddress() == 0) { // Wait for device response
 					writeBroadcastPing(CRSF_ADDRESS_CRSF_TRANSMITTER);
 					loopCount--;
 				} else
 					loopCount++;
-			} else if(loopCount > 1005 && loopCount <= 1010) {
-				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRate);
+			} else if(loopCount > 505 && loopCount <= 510) {
+				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_PKT_RATE_COMMAND, s_packetRateIndex);
 				loopCount++;
-			} else if(loopCount > 1010 && loopCount <= 1015) {
-				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_maxTxPower);
+			} else if(loopCount > 510 && loopCount <= 515) {
+				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_POWER_COMMAND, s_maxTxPowerIndex);
 				loopCount++;
-			} else if(loopCount > 1015 && loopCount <= 1020) {
+			} else if(loopCount > 515 && loopCount <= 520) {
+				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_TELM_RATIO_COMMAND, s_telemRatioIndex);
+				loopCount++;
+			} else if(loopCount > 520 && loopCount <= 525) {
 				crsfInst.writeParameterWrite(CRSF_ADDRESS_CRSF_TRANSMITTER, ELRS_MODEL_MATCH_COMMAND, s_modelMatch);
 				loopCount++;
-			} else if(loopCount > 1020 && loopCount <= 1025) {
+			} else if(loopCount > 525 && loopCount <= 530) {
 				writeModelId(CRSF_ADDRESS_CRSF_TRANSMITTER, s_modelId);
 				loopCount++;
 			} else {
-#if 1
-				if(paramNumber < crsfInst.getDeviceFieldCount()) {
+				if(paramReadingOn && paramNumber < crsfInst.getDeviceFieldCount()) {
 					if(crsfInst.getIsParamReadingDone()) {
 						paramNumber++;
 						if(paramNumber < crsfInst.getDeviceFieldCount()) {
 							crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
 							//crsfInst.waitForRxPacket(100);
+						} else { // All field read
+							Serial.printf("Packet Rate is %s\r\n", crsfInst.getPacketRate().c_str());
+							Serial.printf("Telemetry Ratio is %s unit %s\r\n", crsfInst.getTelemRatio().c_str(), crsfInst.getTelemRatioUnit().c_str());
+							Serial.printf("Switch Mode is %s\r\n", crsfInst.getSwitchMode().c_str());
+							Serial.printf("Model Match is %s ID is %s\r\n", crsfInst.getModelMatchEnabled() ? "Enabled" : "Disabled", crsfInst.getModelMatchId().c_str());
+							Serial.printf("TX Power is %s\r\n", crsfInst.getTxPower().c_str());
+							Serial.printf("Max Power is %s %s\r\n", crsfInst.getMaxPower().c_str(),crsfInst.getMaxPowerUnit().c_str());
+
+							Serial.printf("Supported Packet Rates\r\n");
+
+							std::size_t found = std::string::npos;
+							int i = 0;
+							for(i = 0; i < crsfInst.getPacketRateArray().size(); ++i) {
+								auto & s = crsfInst.getPacketRateArray()[i];
+								found = s.find(STR_PACKET_RATE);
+								if(found != std::string::npos) {
+									break;
+								}
+							}
+							if(found != std::string::npos) {
+								if(s_packetRateIndex != i) {
+									s_packetRateIndex = i;
+									Preferences preferences;
+									preferences.begin("elrs.cfg", false);
+									preferences.putInt(KEY_PACKET_RATE_INDEX, s_packetRateIndex);
+									preferences.end();
+								}
+							}
+							for(i = 0; i < crsfInst.getPacketRateArray().size(); ++i) {
+								Serial.printf("%c\t%s\r\n", i == s_packetRateIndex ? '*' : ' ', crsfInst.getPacketRateArray()[i].c_str());
+							}
+
+							Serial.printf("Supported Max Power\r\n");
+
+							found = std::string::npos;
+							i = 0;
+							for(i = 0; i < crsfInst.getMaxPowerArray().size(); ++i) {
+								auto & s = crsfInst.getMaxPowerArray()[i];
+								found = s.find(STR_MAX_TXPOWER);
+								if(found != std::string::npos) {
+									break;
+								}
+							}
+							if(found != std::string::npos) {
+								if(s_maxTxPowerIndex != i) {
+									s_maxTxPowerIndex = i;
+									Preferences preferences;
+									preferences.begin("elrs.cfg", false);
+									preferences.putInt(KEY_MAX_TXPOWER_INDEX, s_maxTxPowerIndex);
+									preferences.end();
+								}
+							}
+							for(i = 0; i < crsfInst.getMaxPowerArray().size(); ++i) {
+								Serial.printf("%c\t%s\r\n", i == s_maxTxPowerIndex ? '*' : ' ', crsfInst.getMaxPowerArray()[i].c_str());
+							}
+
+							Serial.printf("Supported Telemetry Ratio\r\n");
+
+							found = std::string::npos;
+							i = 0;
+							for(i = 0; i < crsfInst.getTelemRatioArray().size(); ++i) {
+								auto & s = crsfInst.getTelemRatioArray()[i];
+								found = s.find(STR_TELM_RATIO);
+								if(found != std::string::npos) {
+									break;
+								}
+							}
+							if(found != std::string::npos) {
+								if(s_telemRatioIndex != i) {
+									s_telemRatioIndex = i;
+									Preferences preferences;
+									preferences.begin("elrs.cfg", false);
+									preferences.putInt(KEY_TELM_RATIO_INDEX, s_telemRatioIndex);
+									preferences.end();
+								}
+							}
+							for(i = 0; i < crsfInst.getTelemRatioArray().size(); ++i) {
+								Serial.printf("%c\t%s\r\n", i == s_telemRatioIndex ? '*' : ' ', crsfInst.getTelemRatioArray()[i].c_str());
+							}
+
+							loopCount = 0;
+							paramReadingOn = false;
+							paramNumber = 0;
 						}
 					} else if(crsfInst.getIsParamReading()) {
 						if(crsfInst.getChunkRemaining() > 0) {
@@ -368,17 +452,8 @@ void loop() {
 					} else if(paramNumber == 0 && 
 							crsfInst.getIsParamReading() == false) {
 						crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, 0);
-						//crsfInst.waitForRxPacket(100);
 					}  
 				}
-#else
-				if(crsfInst.getIsParamReading() && 
-						crsfInst.getChunkRemaining() > 0) {
-					crsfInst.writeParameterRead(CRSF_ADDRESS_CRSF_TRANSMITTER, paramNumber, crsfInst.getCurrentFieldChunk());
-					//delayMicroseconds(1000);
-					//crsfInst.waitForRxPacket(100);
-				} else
-#endif
 				sendFallbackChannels(CRSF_ADDRESS_CRSF_TRANSMITTER);
 			}      
 		}

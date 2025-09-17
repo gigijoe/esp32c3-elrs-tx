@@ -2,7 +2,8 @@
 
 AlfredoCRSF::AlfredoCRSF() :
 	_crc(0xd5),
-	_lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown"), _currentParamNumber(0), _currentFieldChunk(0), _chunkRemaining(0), _paramDataSize(0), _isParamReading(false), _isParamReadingDone(false)
+	_lastReceive(0), _lastChannelsPacket(0), _linkIsUp(false), _updateInterval(0), _correction(0), _device_address(0), _device_name("Unknown"), _currentParamNumber(0), _currentFieldChunk(0), _chunkRemaining(0), _paramDataSize(0), _isParamReading(false), _isParamReadingDone(false), 
+	m_packetRateIndex(0), m_maxPowerIndex(0), m_telemRatioIndex(0), m_switchModeIndex(0), m_modelMatchEnabled(false), m_bindState(0)
 {
 	 
 }
@@ -293,7 +294,7 @@ void AlfredoCRSF::packetDeviceInfo(const crsf_ext_header_t *p)
 	_deviceInfo.fieldCnt = deviceInfo->fieldCnt;
 	_deviceInfo.parameterVersion = deviceInfo->parameterVersion;
 	
-	Serial.printf("[ Device Onformation ]\r\n");
+	Serial.printf("[ Device Information ]\r\n");
 	Serial.printf("\tDevice Address 0x%02x\r\n", _device_address);
 	Serial.printf("\tDevice Name %s\r\n", _device_name);
 	Serial.printf("\tSerial No 0x%08x\r\n", _deviceInfo.serialNo);
@@ -313,6 +314,7 @@ void AlfredoCRSF::packetParameterSettingsEntry(const crsf_ext_header_t *p)
 	
 	if(_isParamReading == false) {
 Serial.printf("Not param reading phase ...\r\n");
+Serial.printf("<%u> Chunk remaining : %u\r\n", number, chunkRemaining);
 		return;
 	}
   
@@ -368,20 +370,70 @@ Serial.printf("Chunk remaining is 0xff ...\r\n");
 
 		switch(dataType) {
 			case CRSF_TEXT_SELECTION: {
-				char options[256];
+				char options[256] = {0};
 				strlcpy(options, (const char *)&_paramData[n], 256);
 				n += strlen((const char *)options) + 1; // options + '\0'
 				Serial.printf("\tOptions : %s\r\n", options);
-				Serial.printf("\tValue : %u\r\n", _paramData[n++]);
+				uint8_t value = _paramData[n++];
+				Serial.printf("\tValue : %u\r\n", value);
 				Serial.printf("\tMin : %u\r\n", _paramData[n++]);
 				Serial.printf("\tMax : %u\r\n", _paramData[n++]);
-				Serial.printf("\tDefault : %u\r\n", _paramData[n++]);
+				uint8_t defaultValue = _paramData[n++];
+				Serial.printf("\tDefault : %u\r\n", defaultValue);
 				char unit[CRSF_MAX_NAME_LEN];
 				strlcpy(unit, (const char *)&_paramData[n], CRSF_MAX_NAME_LEN);
 				Serial.printf("\tUnit : %s\r\n", unit);
+
+				if(strcmp(name, "Packet Rate") == 0) {
+					const char s[] = ";";
+					char *token = strtok(options, s);
+					while(token != NULL) {
+						//Serial.printf("\t%s\r\n", token);
+						m_packetRateArray.push_back(token);
+						token = strtok(NULL, s);
+					}
+					m_packetRateIndex = value;
+				} else if(strcmp(name, "Telem Ratio") == 0) {
+					const char s[] = ";";
+					char *token = strtok(options, s);
+					while(token != NULL) {
+						//Serial.printf("\t%s\r\n", token);
+						m_telemRatioArray.push_back(token);
+						token = strtok(NULL, s);
+					}
+					m_telemRatioIndex = value;
+					m_telemRatioUnit = unit;
+				} else if(strcmp(name, "Switch Mode") == 0) {
+					const char s[] = ";";
+					char *token = strtok(options, s);
+					while(token != NULL) {
+						//Serial.printf("\t%s\r\n", token);
+						m_switchModeArray.push_back(token);
+						token = strtok(NULL, s);
+					}
+					m_switchModeIndex = value;
+				} else if(strcmp(name, "Model Match") == 0) {
+					m_modelMatchEnabled = value > 0 ? true : false;
+					m_modelMatchId = unit;
+				} else if(strcmp(name, "Max Power") == 0) {
+					const char s[] = ";";
+					char *token = strtok(options, s);
+					while(token != NULL) {
+						//Serial.printf("\t%s\r\n", token);
+						m_maxPowerArray.push_back(token);
+						token = strtok(NULL, s);
+					}
+					m_maxPowerIndex = value;
+					m_maxPowerUnit = unit;
+				}
 			} break;
 			case CRSF_COMMAND: {
-				Serial.printf("\tState : %u\r\n", _paramData[n++]);
+				uint8_t state = _paramData[n++];
+				Serial.printf("\tState : %u\r\n", state);
+				if(strcmp(name, "Bind") == 0) {
+					m_bindState = state;
+				}
+
 				char info[CRSF_MAX_NAME_LEN];
 				strlcpy(info, (const char *)&_paramData[n], CRSF_MAX_NAME_LEN);
 				n += strlen((const char *)info) + 1; // info + '\0'
@@ -398,7 +450,7 @@ Serial.printf("Chunk remaining is 0xff ...\r\n");
 				char info[256];
 				strlcpy(info, (const char *)&_paramData[n], 256);
 				n += strlen((const char *)info) + 1; // info + '\0'
-				Serial.printf("\tInfo : %s\r\n", info);        
+				Serial.printf("\tInfo : %s\r\n", info);				
 			} break;
 			case CRSF_FOLDER:
 				for(int i=n;i<dataSize;++i) {
@@ -406,7 +458,12 @@ Serial.printf("Chunk remaining is 0xff ...\r\n");
 						break;
 					Serial.printf("0x%02x ", _paramData[i]);
 				}
-			Serial.printf("\r\n");
+				Serial.printf("\r\n");
+
+				if(strncmp(name, "TX Power", 8) == 0) {
+					m_txPower = name;
+				}
+				break;
 			break;
 			case CRSF_FLOAT:
 			case CRSF_OUT_OF_RANGE:
@@ -417,6 +474,7 @@ Serial.printf("Chunk remaining is 0xff ...\r\n");
 		_currentFieldChunk = 0;
 		_isParamReading = false;
 		_isParamReadingDone = true;
+		_currentParamNumber = 0;
 	}
 }
 

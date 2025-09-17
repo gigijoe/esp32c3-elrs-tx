@@ -4,6 +4,8 @@
 #include <crc8.h>
 #include <crsf_protocol.h>
 
+#include <vector>
+
 #if defined (CONFIG_IDF_TARGET_ESP32C3)
 extern void ICACHE_RAM_ATTR duplex_set_RX();
 extern void ICACHE_RAM_ATTR duplex_set_TX();
@@ -57,6 +59,43 @@ public:
     
     void writeParameterWrite(uint8_t addr, uint8_t number, uint8_t value);
     
+    uint8_t m_packetRateIndex, m_maxPowerIndex;
+    uint8_t m_telemRatioIndex;
+    std::string m_telemRatioUnit;
+    uint8_t m_switchModeIndex;
+    bool m_modelMatchEnabled;
+    std::string m_modelMatchId;
+    std::string m_txPower;
+    std::string m_maxPowerUnit;
+    int m_bindState;
+
+    std::vector<std::string> m_packetRateArray;
+    std::vector<std::string> m_telemRatioArray;
+    std::vector<std::string> m_switchModeArray;
+    std::vector<std::string> m_maxPowerArray;
+
+    const std::vector<std::string> & getPacketRateArray() { return m_packetRateArray; }
+    const std::vector<std::string> & getTelemRatioArray() { return m_telemRatioArray; }
+    const std::vector<std::string> & getSwitchModeArray() { return m_switchModeArray; }
+    const std::vector<std::string> & getMaxPowerArray() { return m_maxPowerArray; }
+
+    uint8_t getPacketRateIndex() { return m_packetRateIndex; }
+    uint8_t getTelemRatioIndex() { return m_telemRatioIndex; }
+    uint8_t getSwitchModeIndex() { return m_switchModeIndex; }
+    uint8_t getMaxPowerIndex() { return m_maxPowerIndex; }
+
+    const std::string getPacketRate() { return m_packetRateIndex < m_packetRateArray.size() ? m_packetRateArray[m_packetRateIndex] : "Unknown"; }
+    const std::string getTelemRatio() { return m_telemRatioIndex < m_telemRatioArray.size() ? m_telemRatioArray[m_telemRatioIndex] : "Unknown"; }
+    const std::string getTelemRatioUnit() { return m_telemRatioUnit; }
+    const std::string getSwitchMode() { return m_switchModeIndex < m_switchModeArray.size() ? m_switchModeArray[m_switchModeIndex] : "Unknown"; }
+    bool getModelMatchEnabled() { return m_modelMatchEnabled; }
+    const std::string getModelMatchId() { return m_modelMatchId; }
+    const std::string getTxPower() { return m_txPower; }
+
+    const std::string getMaxPower() { return m_maxPowerIndex < m_maxPowerArray.size() ? m_maxPowerArray[m_maxPowerIndex] : "Unknown"; }
+    const std::string getMaxPowerUnit() { return m_maxPowerUnit; }
+    int getBindState() { return m_bindState; }
+
 private:
     Stream* _port;
     uint8_t _rxBuf[CRSF_MAX_PACKET_LEN+3];
